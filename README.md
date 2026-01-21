@@ -1,7 +1,7 @@
 # ALARM: lAbeL-free hARmful Meme detection framework powered by LMM agent self-improvement
 
 This repo provides an official implementation of ALARM as described in the paper: *From Shallow Humor to Metaphor: Towards Label-Free Harmful Meme Detection via LMM Agent Self-Improvement* accepted by KDD 2026.
-Paper will be available soon.
+Paper is available from [arxiv](https://www.arxiv.org/abs/2512.21598).
 
 ## Abstract
 
