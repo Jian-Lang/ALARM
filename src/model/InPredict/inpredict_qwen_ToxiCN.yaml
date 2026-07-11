@@ -4,7 +4,7 @@ hydra:
     dir: .
 
 prompt: 
-model_id: Qwen/Qwen2.5-VL-72B-Instruct-AWQ
+model_id: Qwen/Qwen2.5-VL-72B-Instruct
 model_short_name: qwen
 dataset: ToxiCN
 task: inpredict

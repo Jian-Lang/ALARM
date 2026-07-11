@@ -15,7 +15,7 @@ import json
 import multiprocessing
 from functools import partial
 
-from ..utils.lmm_factory import LMMFactory
+from ..utils.mllm_factory import MLLMFactory
 
 
 prompt_template = """
@@ -222,7 +222,7 @@ def process_single_item(row, model_id, model_params, img_dir, reference_set_mana
     """
     try:
         # Create a new model instance for this process
-        model = LMMFactory(model_id, model_params)
+        model = MLLMFactory(model_id, model_params)
         
         # Get image path and text
         img_path = os.path.join(img_dir, row["img"])
@@ -311,7 +311,7 @@ class InPredict_Runner():
         
         self.alpha = OmegaConf.select(self.cfg, "alpha", default=0.2)
         if OmegaConf.select(self.cfg, "extra_data"):
-            self.extra_data = pd.read_json('data/FHM/model/PromptHate/clean_caption/mem.json')
+            self.extra_data = pd.read_json(f'data/{self.dataset}/model/PromptHate/clean_caption/mem.json')
         else:
             self.extra_data = None
         
@@ -357,7 +357,7 @@ class InPredict_Runner():
 
     def run(self, num_processes=4):
         """
-        Process a dataset using the specified LMM model in parallel and save predictions
+        Process a dataset using the specified MLLM model in parallel and save predictions
         
         Args:
             num_processes: Number of parallel processes to use

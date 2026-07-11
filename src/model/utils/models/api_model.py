@@ -35,6 +35,8 @@ class APIModel():
 
     @staticmethod
     def model_list():
+        # Only GPT-4o is served through the OpenAI-compatible API (set API_URL /
+        # API_KEY in .env). The Qwen backbone runs locally via Qwen2VLModel.
         return ["gpt-4o"]
     
     def _encode_image(self, image: Image.Image) -> str:

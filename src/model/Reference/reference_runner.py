@@ -1,5 +1,5 @@
 import re
-from ..utils.lmm_factory import LMMFactory
+from ..utils.mllm_factory import MLLMFactory
 from PIL import Image
 from pathlib import Path
 from loguru import logger
@@ -46,12 +46,13 @@ Processing Steps:
 4. Try to make every reference useful, make more upvotes, and downvotes.
 5. Refine references to emphasize distinct signals that uniquely identify specific harmful patterns.
 6. Generalize references to extract universal principles that capture common traits of harmful content.
-7. Return only the JSON operations with the below format:
+7. If UPVOTE/DOWNVOTE is used in an operation, include only 'none' in the reference of the operation.
+8. Return only the JSON operations with the below format:
 [
   {{
     "operation": "<ADD|EDIT|UPVOTE|DOWNVOTE>",
-    "reference": "<index/none>",
-    "insight": "<new/revised text>"
+    "target": "<index/none>",
+    "reference": "<new/revised text>"
   }}
 ]
 """
@@ -232,7 +233,7 @@ class Reference_Runner:
         """
         self.model_id = cfg.model_id
         self.model_params = cfg.para if cfg.para else {}
-        self.model = LMMFactory(self.model_id, self.model_params)
+        self.model = MLLMFactory(self.model_id, self.model_params)
         self.image_path = f'data/{cfg.dataset}/img'
         self.result = None
         self.data_df = pd.read_json(f'data/{cfg.dataset}/data.jsonl', lines=True, dtype={'id': str})
@@ -338,7 +339,7 @@ def process_experience_with_sync(args):
     
     try:
         # Create a new model instance for this process
-        model = LMMFactory(model_id, model_params)
+        model = MLLMFactory(model_id, model_params)
         
         id1 = row['id1']
         id2 = row['id2']

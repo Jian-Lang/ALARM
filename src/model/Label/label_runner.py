@@ -1,4 +1,4 @@
-from ..utils.lmm_factory import LMMFactory
+from ..utils.mllm_factory import MLLMFactory
 from typing import Optional, Union
 from PIL import Image
 import torch
@@ -30,7 +30,7 @@ class Label_Runner():
             logger.info(f"Using custom prompt: {self.cfg.prompt}")
         self.para = self.cfg.para if self.cfg.para else {}
         
-        self.model = LMMFactory(self.cfg.model_id, self.para)
+        self.model = MLLMFactory(self.cfg.model_id, self.para)
         self.datadf = DataDfFactory(self.cfg.dataset, **self.cfg.data)
         self.prompt = self.cfg.prompt if self.cfg.prompt else ""
     
@@ -121,7 +121,7 @@ class Label_Runner():
 
     def run(self, num_processes):
         """
-        Process a dataset using the specified LMM model and save predictions
+        Process a dataset using the specified MLLM model and save predictions
         
         Args:
             input_file: Path to input jsonl file

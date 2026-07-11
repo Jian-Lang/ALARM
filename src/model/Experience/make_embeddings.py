@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-datasets = ['FHM', 'HarM', 'MAMI', 'ToxiCN']
+datasets = ['FHM', 'MAMI', 'ToxiCN']
 model = SentenceTransformer('jinaai/jina-clip-v2', trust_remote_code=True, truncate_dim=512, device='cuda')
 batch_size = 128
 
@@ -58,7 +58,7 @@ for dataset in datasets:
             image_fea_dict[mid] = img_emb.cpu()
             text_fea_dict[mid] = txt_emb.cpu()
     
-    fea_path = Path('data/{dataset}/fea/')
+    fea_path = Path(f'data/{dataset}/fea/')
     # Create the directory if it doesn't exist
     os.makedirs(fea_path, exist_ok=True)
     torch.save(joint_fea_dict, fea_path / 'joint_embed.pt')

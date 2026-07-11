@@ -31,13 +31,13 @@ class Inferrer():
                     cid=cid,
                     log_dir=log_dir,
                 )
-            case "insight":
+            case "experience":
                 self.runner = Experience_Runner(
                     cfg=self.cfg,
                     cid=cid,
                     log_dir=log_dir,
                 )
-            case "manage":
+            case "reference":
                 self.runner = Reference_Runner(
                     cfg=self.cfg,
                 )
@@ -54,7 +54,7 @@ class Inferrer():
         num_processes = 1   # for API
         self.runner.run(num_processes=num_processes)
         self.runner.log_result()
-@hydra.main(version_base=None, config_path="config", config_name="FREE_FHM")
+@hydra.main(version_base=None, config_path="config", config_name="label_qwen_FHM")
 def main(cfg: DictConfig):
     config_str = OmegaConf.to_yaml(cfg)
     config_md5 = calculate_md5(config_str)[:8]

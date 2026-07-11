@@ -1,4 +1,4 @@
-from ..utils.lmm_factory import LMMFactory
+from ..utils.mllm_factory import MLLMFactory
 from PIL import Image
 from pathlib import Path
 from loguru import logger
@@ -19,8 +19,8 @@ class Experience_Runner:
             model_id: ID of the model to use
         """
         self.model_id = cfg.model_id
-        self.model_params = cfg.para if cfg.psara else {}
-        self.model = LMMFactory(self.model_id, self.model_params)
+        self.model_params = cfg.para if cfg.para else {}
+        self.model = MLLMFactory(self.model_id, self.model_params)
         self.image_path = f'data/{cfg.dataset}/img'
         self.result = None
         self.pairs_name = cfg.pairs_name
@@ -129,7 +129,7 @@ def process_pair(pair_info, model_id, model_params, image_path, data_df):
         Dictionary with experience result
     """
     # Create a new model instance for this process
-    model = LMMFactory(model_id, model_params)
+    model = MLLMFactory(model_id, model_params)
     
     id1, id2 = pair_info
     

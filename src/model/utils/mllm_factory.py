@@ -4,7 +4,7 @@ from .models.base_model import BaseModel
 from .models.qwen2vl_model import Qwen2VLModel
 from .models.api_model import APIModel
 
-def LMMFactory(model_id: str, params=None|Dict):
+def MLLMFactory(model_id: str, params=None|Dict):
     # Check each model class directly
     model_classes = [Qwen2VLModel, APIModel]
     for model_class in model_classes:

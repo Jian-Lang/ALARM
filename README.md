@@ -11,27 +11,28 @@ The proliferation of harmful memes on online media poses significant risks to pu
 
 ![Framework](framework.jpg)
 
-
 ## Source Code Structure
+
+Each stage under `src/model` corresponds to a component of the method (paper section in parentheses):
 
 ```sh
 ├── data    # dataset path
 │   ├── FHM
 │   ├── MAMI
 │   └── ToxiCN
-├── run         # script for running ALARAM 
+├── run         # scripts for running ALARM end-to-end
 └── src
     ├── main.py
     ├── model
-    │   ├── Experience  # code for gathering experience
-    │   ├── InPredict   # code for predicting with reference
-    │   ├── Label       # code for generating pesudo label
-    │   ├── Reference   # code for refining reference set
+    │   ├── Label       # Confidence-based Explicit Meme Identification (Sec 3.2) — task: label
+    │   ├── Experience  # Multimodal Retrieval + Experience Gathering (Sec 3.3.1-3.3.2) — task: experience
+    │   ├── Reference   # Reference Refinement (Sec 3.3.3) — task: reference
+    │   ├── InPredict   # Inference with the reference set (Sec 3.4) — task: inpredict
     │   └── utils       # utils for dataset and LMM
     └── utils           # utils for main code
 ```
 
-## Dataset
+# Dataset
 
 Due to copyright restrictions, the raw datasets are not included in this repository. You can obtain them from their respective original project sites.
 
@@ -54,18 +55,32 @@ pip install -r requirements.txt
 ### Prepare dataset
 
 1. Download datasets and store them in `data` presented in Source Code Structure, and save images to `img` in the corresponding dataset path.
-2. For each meme datasets, save `data.jsonl` in each dataset path, with each line containing `id`, `text`, `label`, and `img`. Example is provided below:
+2. For each meme datasets, save `data.jsonl` in each dataset path, with each line containing `id`, `text`, `label`, `img`, and `split`. Example is provided below:
 ```
 {"id":42953,"img":"42953.png","label":0,"text":"its their character not their color that matters","split":"train"}
 ```
+3. (FHM only) Also provide the PromptHate entity/race captions — see [PromptHate captions](#prompthate-captions-fhm-only).
 
 ### Run
-
 ```sh
 bash run/run_FHM.sh     # run ALARM on FHM
 bash run/run_MAMI.sh     # run ALARM on MAMI
 bash run/run_ToxiCN.sh     # run ALARM on ToxiCN
 ```
+
+## PromptHate captions (FHM only)
+
+For FHM, the inference stage augments each meme's text with per-image `entity` and `race`
+tags (`extra_data: True` in `inpredict_qwen_FHM.yaml`), following
+[PromptHate](https://github.com/Social-AI-Studio/PromptHate) / ProCap. Obtain PromptHate's
+preprocessed FHM file and place it at:
+
+```
+data/FHM/model/PromptHate/clean_caption/mem.json
+```
+
+It must be readable by `pandas.read_json(...)` with fields `img`, `entity`, and `race` per
+FHM image. Set `extra_data: False` to run without these captions.
 
 ## LMM Factory
 

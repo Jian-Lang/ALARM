@@ -76,12 +76,19 @@ def pil_image_to_base64(image, image_format="PNG"):
 class Qwen2VLModel(BaseModel):
     def __init__(self, model_id="Qwen/Qwen2.5-VL-72B-Instruct-AWQ", params={}):
         super().__init__()
+        # Prefer FlashAttention-2 when it is installed; otherwise fall back to the
+        # PyTorch SDPA kernel so the local model still loads without flash-attn.
+        try:
+            import flash_attn  # noqa: F401
+            attn_implementation = "flash_attention_2"
+        except ImportError:
+            attn_implementation = "sdpa"
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype="auto",
             # torch_dtype=torch.float16,
             device_map="cuda",
-            attn_implementation="flash_attention_2",
+            attn_implementation=attn_implementation,
             low_cpu_mem_usage=True
         )
         self.processor = AutoProcessor.from_pretrained(model_id)
@@ -96,7 +103,11 @@ class Qwen2VLModel(BaseModel):
         
     @staticmethod
     def model_list():
-        return ["Qwen/Qwen2.5-VL-72B-Instruct-AWQ", "Qwen/Qwen2.5-72B-Instruct-AWQ"]
+        # Local (GPU) LMM backbone, run via transformers. The same Qwen2.5-VL-72B
+        # agent serves every stage: the label stage needs token-level logits for the
+        # harmful/benign confidence, and the reference stage uses it text-only
+        # (chat_text). The -AWQ variant is a lower-memory drop-in.
+        return ["Qwen/Qwen2.5-VL-72B-Instruct", "Qwen/Qwen2.5-VL-72B-Instruct-AWQ"]
 
     
     def chat_img(self, prompt: str, image: Image.Image, max_tokens: int = 512) -> str:
