@@ -32,7 +32,7 @@ Each stage under `src/model` corresponds to a component of the method (paper sec
     └── utils           # utils for main code
 ```
 
-# Dataset
+## Dataset
 
 Due to copyright restrictions, the raw datasets are not included in this repository. You can obtain them from their respective original project sites.
 
@@ -81,6 +81,7 @@ data/FHM/model/PromptHate/clean_caption/mem.json
 
 It must be readable by `pandas.read_json(...)` with fields `img`, `entity`, and `race` per
 FHM image. Set `extra_data: False` to run without these captions.
+
 
 ## LMM Factory
 

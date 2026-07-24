@@ -11,6 +11,18 @@ from io import BytesIO, text_encoding
 from qwen_vl_utils import process_vision_info
 from icecream import ic
 
+# AutoAWQ compatibility shim. Loading an AWQ checkpoint makes transformers import autoawq,
+# and autoawq 0.2.9 (the only installable build, now discontinued) imports
+# `PytorchGELUTanh` from transformers.activations — a symbol current transformers removed.
+# Re-add it when missing so the AWQ backbone imports; a no-op on older transformers. Runs
+# at module import, before any from_pretrained() triggers the autoawq import.
+import transformers.activations as _tf_activations
+if not hasattr(_tf_activations, "PytorchGELUTanh"):
+    class PytorchGELUTanh(torch.nn.GELU):
+        def __init__(self, *args, **kwargs):
+            super().__init__(approximate="tanh")
+    _tf_activations.PytorchGELUTanh = PytorchGELUTanh
+
 
 def resize_image(image:Image.Image, max_size=640):
     """
@@ -83,10 +95,14 @@ class Qwen2VLModel(BaseModel):
             attn_implementation = "flash_attention_2"
         except ImportError:
             attn_implementation = "sdpa"
+        # AWQ GEMM kernels are float16-only. The checkpoint config declares bfloat16, and
+        # transformers only casts it down when given an explicit torch.bfloat16 — passing
+        # "auto" leaves the model in bfloat16 and the dequant kernel fails to compile at
+        # generate() time. Pin float16 for AWQ weights; keep "auto" for the full model.
+        torch_dtype = torch.float16 if "AWQ" in model_id else "auto"
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
-            torch_dtype="auto",
-            # torch_dtype=torch.float16,
+            torch_dtype=torch_dtype,
             device_map="cuda",
             attn_implementation=attn_implementation,
             low_cpu_mem_usage=True

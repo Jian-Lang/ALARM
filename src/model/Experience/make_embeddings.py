@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 from PIL import Image
 from sentence_transformers import SentenceTransformer
@@ -7,7 +8,13 @@ import os
 from pathlib import Path
 
 
-datasets = ['FHM', 'MAMI', 'ToxiCN']
+DATASETS = ['FHM', 'MAMI', 'ToxiCN']
+
+parser = argparse.ArgumentParser(description="Encode memes with Jina-CLIP for the retrieval stage")
+parser.add_argument('--dataset', nargs='+', default=DATASETS, choices=DATASETS,
+                    help="Datasets to encode (default: all of them)")
+datasets = parser.parse_args().dataset
+
 model = SentenceTransformer('jinaai/jina-clip-v2', trust_remote_code=True, truncate_dim=512, device='cuda')
 batch_size = 128
 

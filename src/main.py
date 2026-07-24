@@ -13,6 +13,7 @@ from model.Label.label_runner import Label_Runner
 from model.Experience.experience_runner import Experience_Runner
 from model.Reference.reference_runner import Reference_Runner
 from model.InPredict.inpredict_runner import InPredict_Runner
+from model.utils.models.api_model import APIModel
 from utils.core_utils import (
     copy_config_file,
     calculate_md5
@@ -51,7 +52,14 @@ class Inferrer():
                 raise NotImplementedError(f"Task {cfg.task} not implemented")
 
     def run(self):
-        num_processes = 1   # for API
+        # Local LMM backbones must stay single-process: one checkpoint is loaded and reused,
+        # and a CUDA context cannot be re-initialised inside a forked worker. Only API
+        # backbones are parallelised, using num_process (config) or NUM_PROCESSES (.env).
+        if self.cfg.model_id in APIModel.model_list():
+            num_processes = int(OmegaConf.select(self.cfg, "num_process", default=os.getenv("NUM_PROCESSES", 1)))
+        else:
+            num_processes = 1
+        logger.info(f"Running task {self.cfg.task} with {num_processes} process(es)")
         self.runner.run(num_processes=num_processes)
         self.runner.log_result()
 @hydra.main(version_base=None, config_path="config", config_name="label_qwen_FHM")

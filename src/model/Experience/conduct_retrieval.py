@@ -1,3 +1,4 @@
+import argparse
 import torch
 import pandas as pd
 import numpy as np
@@ -7,6 +8,8 @@ from tqdm import tqdm
 import json
 from typing import Dict, List, Tuple
 from sklearn.metrics import accuracy_score, f1_score  # Add import for metrics
+
+DATASETS = ['FHM', 'MAMI', 'ToxiCN']
 
 
 def compute_batch_similarities(query_features_img: np.ndarray,
@@ -92,9 +95,7 @@ def greedy_matching(similarities: List[Dict],
   
     return final_pairs
 
-def main():
-    # Parameters
-    datasets = ['FHM', 'MAMI', 'ToxiCN']
+def main(datasets: List[str]):
     # Create a range of coverage rates from 0.1 to 1.0 with interval of 0.1
     coverage_rates = [round(0.1 * i, 1) for i in range(1, 11)]  # [0.1, 0.2, ..., 1.0]
   
@@ -197,4 +198,8 @@ def main():
             print("----------------------------")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Build contrastive (benign, harmful) pairs from the label stage output")
+    parser.add_argument('--dataset', nargs='+', default=DATASETS, choices=DATASETS,
+                        help="Datasets to process (default: all of them)")
+    args = parser.parse_args()
+    main(args.dataset)

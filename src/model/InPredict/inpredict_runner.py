@@ -206,8 +206,9 @@ class ReferenceSetManager:
 
 def process_single_item(row, model_id, model_params, img_dir, reference_set_manager, prompt_template, custom_prompt=None, strategy=None):
     """
-    Process a single item in a separate process
-    
+    Process a single item in a separate process (API models only: every call builds
+    its own model client, which is prohibitively expensive for a local checkpoint)
+
     Args:
         row: DataFrame row containing data information
         model_id: Model ID to use
@@ -216,14 +217,32 @@ def process_single_item(row, model_id, model_params, img_dir, reference_set_mana
         reference_set_manager: Manager for references with item-specific mapping
         prompt_template: Template for the prompt
         custom_prompt: Custom prompt if provided
-        
+
+    Returns:
+        Dictionary with processing result or None if failed
+    """
+    model = MLLMFactory(model_id, model_params)
+    return process_single_item_with_model(
+        row, model, img_dir, reference_set_manager, custom_prompt, strategy=strategy
+    )
+
+
+def process_single_item_with_model(row, model, img_dir, reference_set_manager, custom_prompt, strategy=None):
+    """
+    Process a single item with an already initialised model
+
+    Args:
+        row: DataFrame row containing data information
+        model: Model instance shared across items
+        img_dir: Directory containing images
+        reference_set_manager: Manager for references with item-specific mapping
+        custom_prompt: Prompt template to fill in
+        strategy: Strategy used to select the references shown to the model
+
     Returns:
         Dictionary with processing result or None if failed
     """
     try:
-        # Create a new model instance for this process
-        model = MLLMFactory(model_id, model_params)
-        
         # Get image path and text
         img_path = os.path.join(img_dir, row["img"])
         if not os.path.exists(img_path):
@@ -333,16 +352,16 @@ class InPredict_Runner():
         # Calculate class-specific F1 scores
         # For positive class (label=1), use pos_label=1
         positive_f1 = f1_score(
-            df[pos_mask]['label'].astype(int), 
+            df[pos_mask]['label'].astype(int),
             df[pos_mask]['pred'].astype(int),
             average='binary',
             pos_label=1
         ) if pos_mask.any() else 0
-        
+
         # For negative class (label=0), we consider 0 as the positive class
         # This ensures we're calculating F1 for the negative class correctly
         negative_f1 = f1_score(
-            df[neg_mask]['label'].astype(int), 
+            df[neg_mask]['label'].astype(int),
             df[neg_mask]['pred'].astype(int),
             average='binary',
             pos_label=0
@@ -400,7 +419,7 @@ class InPredict_Runner():
         
         items_to_process = []
         for _, row in to_process_df.iterrows():
-            if self.extra_data:
+            if self.extra_data is not None:
                 entity = self.extra_data[self.extra_data['img'] == row['img']]['entity'].values[0]
                 race = self.extra_data[self.extra_data['img'] == row['img']]['race'].values[0]
                 row['race'] = race
@@ -422,31 +441,48 @@ class InPredict_Runner():
             strategy=self.strategy
         )
         
-        # Create a multiprocessing Pool
-        with multiprocessing.Pool(processes=min(num_processes, len(items_to_process))) as pool:
-            # Process items in parallel and collect results
-            results = []
-            for result in tqdm(
-                pool.imap_unordered(process_func, items_to_process),
-                total=len(items_to_process),
-                desc="Processing items"
-            ):
-                if result:
-                    # Add result to processed dataframe
-                    processed_df = pd.concat([processed_df, pd.DataFrame([result])], ignore_index=True)
-                    results.append(result)
-                    
-                    # Save results periodically
-                    if len(results) % 5 == 0:
-                        processed_df.to_json(output_file, orient='records', lines=True, force_ascii=False)
-                        # Calculate current metrics
-                        accuracy = accuracy_score(processed_df['label'].astype(int), processed_df['pred'].astype(int))
-                        f1 = f1_score(processed_df['label'].astype(int), processed_df['pred'].astype(int), average='macro')
-                        logger.info(f"Processed {len(results)} items. Current Accuracy: {accuracy:.4f}, F1: {f1:.4f}")
-            
-            # Save final results
+        results = []
+
+        def collect(result):
+            """Append one prediction, checkpointing the output file every 5 items"""
+            nonlocal processed_df
+            if not result:
+                return
+            processed_df = pd.concat([processed_df, pd.DataFrame([result])], ignore_index=True)
+            results.append(result)
+            if len(results) % 5 == 0:
+                processed_df.to_json(output_file, orient='records', lines=True, force_ascii=False)
+                # Calculate current metrics
+                accuracy = accuracy_score(processed_df['label'].astype(int), processed_df['pred'].astype(int))
+                f1 = f1_score(processed_df['label'].astype(int), processed_df['pred'].astype(int), average='macro')
+                logger.info(f"Processed {len(results)} items. Current Accuracy: {accuracy:.4f}, F1: {f1:.4f}")
+
+        if num_processes <= 1:
+            # Single-process mode: the local checkpoint is loaded once and reused. Forking a
+            # worker per item would reload the whole LMM for every meme, and a CUDA context
+            # cannot be re-initialised in a forked child at all.
+            logger.info("Using single-process mode (required for local CUDA models)")
+            model = MLLMFactory(self.model_id, self.model_params)
+            for row in tqdm(items_to_process, desc="Processing items"):
+                collect(process_single_item_with_model(
+                    row, model, self.img_dir, self.reference_set_manager, self.prompt, strategy=self.strategy
+                ))
             processed_df.to_json(output_file, orient='records', lines=True, force_ascii=False)
-        
+        else:
+            # Multi-process mode: only suitable for API models (see process_single_item)
+            logger.info("Using multi-process mode (suitable for API models)")
+            with multiprocessing.Pool(processes=min(num_processes, len(items_to_process))) as pool:
+                # Process items in parallel and collect results
+                for result in tqdm(
+                    pool.imap_unordered(process_func, items_to_process),
+                    total=len(items_to_process),
+                    desc="Processing items"
+                ):
+                    collect(result)
+
+                # Save final results
+                processed_df.to_json(output_file, orient='records', lines=True, force_ascii=False)
+
         # Calculate final metrics
         accuracy = accuracy_score(processed_df['label'].astype(int), processed_df['pred'].astype(int))
         f1 = f1_score(processed_df['label'].astype(int), processed_df['pred'].astype(int), average='macro')
@@ -454,7 +490,7 @@ class InPredict_Runner():
         # Calculate F1 scores for positive and negative samples separately
         pos_samples = processed_df[processed_df['label'] == 1]
         neg_samples = processed_df[processed_df['label'] == 0]
-        
+
         # Check if there are any positive samples before calculating F1
         if len(pos_samples) > 0:
             positive_f1 = f1_score(
@@ -465,7 +501,7 @@ class InPredict_Runner():
         else:
             positive_f1 = 0.0
             logger.warning("No positive samples found for F1 calculation")
-            
+
         # Check if there are any negative samples before calculating F1
         if len(neg_samples) > 0:
             negative_f1 = f1_score(

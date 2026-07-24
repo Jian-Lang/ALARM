@@ -280,7 +280,26 @@ class Reference_Runner:
             return
         
         logger.info(f"Processing {len(experiences_to_process)} experiences using {num_processes} processes with synchronized experience set")
-        
+
+        if num_processes <= 1:
+            # Single-process mode: the local checkpoint is loaded once in __init__ and reused.
+            # A forked worker cannot re-initialise CUDA, so a Pool would fail on every task and
+            # (because the failures are caught below) leave an empty reference set behind.
+            logger.info("Using single-process mode (required for local CUDA models)")
+            for i, row in enumerate(tqdm(experiences_to_process, desc="Processing experiences")):
+                prompt = prompt_template.format(
+                    size=self.reference_set_manager.size,
+                    cur_set_str=self.reference_set_manager.get_cur_set_str(),
+                    new_experience=row['experience']
+                )
+                instruction = self.model.chat_text(prompt)
+                self.reference_set_manager.extract_instruction(instruction)
+                self.reference_set_manager.save_to_df(self.output_path)
+                if (i + 1) % 5 == 0:
+                    logger.info(f"Processed {i + 1} experiences, reference set size: {len(self.reference_set_manager.set)}")
+            logger.info("All experiences processed successfully")
+            return
+
         # Create a multiprocessing manager to share data between processes
         with multiprocessing.Manager() as manager:
             # Create a lock for synchronization
@@ -312,7 +331,7 @@ class Reference_Runner:
             
             # Convert shared list to regular list
             results_list = list(results)
-            
+
             # Update the main experience set manager with the final shared data
             self.reference_set_manager.import_data(shared_reference['data'])
         

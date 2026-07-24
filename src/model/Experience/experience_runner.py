@@ -67,7 +67,7 @@ class Experience_Runner:
             return
         
         logger.info(f"Processing {len(pairs_to_process)} pairs using {num_processes} processes")
-        
+
         # Create partial function with fixed arguments
         process_func = partial(
             process_pair,
@@ -76,39 +76,46 @@ class Experience_Runner:
             image_path=self.image_path,
             data_df=self.data_df
         )
-        
-        # Create a multiprocessing Pool
-        with multiprocessing.Pool(processes=min(num_processes, len(pairs_to_process))) as pool:
-            # Process pairs in parallel and collect results
-            results = []
-            for result in tqdm(
-                pool.imap_unordered(process_func, pairs_to_process),
-                total=len(pairs_to_process),
-                desc="Processing pairs"
-            ):
-                results.append(result)
-                
-                # Save results periodically
+
+        results = []
+
+        if num_processes <= 1:
+            # Single-process mode: the local checkpoint is loaded once in __init__ and reused.
+            # A forked worker cannot re-initialise CUDA, so a Pool would fail outright here.
+            logger.info("Using single-process mode (required for local CUDA models)")
+            for pair in tqdm(pairs_to_process, desc="Processing pairs"):
+                results.append(process_pair_with_model(pair, self.model, self.image_path, self.data_df))
                 if len(results) % 5 == 0:
-                    # Create DataFrame from results
-                    new_results_df = pd.DataFrame(results)
-                    combined_df = pd.concat([self.save_df, new_results_df], ignore_index=True).astype({'id1': str, 'id2': str})
-                    combined_df.to_json(self.save_path, lines=True, index=False, orient='records')
-                    logger.info(f"Saved {len(results)} results so far")
-                    
-                    # Update save_df
-                    self.save_df = combined_df
-                    
-                    # Clear results to free memory
-                    results = []
-            
-            # Save remaining results
-            if results:
-                new_results_df = pd.DataFrame(results)
-                self.save_df = pd.concat([self.save_df, new_results_df], ignore_index=True).astype({'id1': str, 'id2': str})
-                self.save_df.to_json(self.save_path, lines=True, index=False, orient='records')
-        
+                    results = self._save_results(results)
+        else:
+            # Multi-process mode: only suitable for API models (see process_pair)
+            logger.info("Using multi-process mode (suitable for API models)")
+            with multiprocessing.Pool(processes=min(num_processes, len(pairs_to_process))) as pool:
+                # Process pairs in parallel and collect results
+                for result in tqdm(
+                    pool.imap_unordered(process_func, pairs_to_process),
+                    total=len(pairs_to_process),
+                    desc="Processing pairs"
+                ):
+                    results.append(result)
+
+                    # Save results periodically
+                    if len(results) % 5 == 0:
+                        results = self._save_results(results)
+
+        # Save remaining results
+        if results:
+            self._save_results(results)
+
         logger.info("All pairs processed successfully")
+
+    def _save_results(self, results):
+        """Append the buffered results to the save file and return an empty buffer"""
+        new_results_df = pd.DataFrame(results)
+        self.save_df = pd.concat([self.save_df, new_results_df], ignore_index=True).astype({'id1': str, 'id2': str})
+        self.save_df.to_json(self.save_path, lines=True, index=False, orient='records')
+        logger.info(f"Saved {len(self.save_df)} experiences so far")
+        return []
         
     def log_result(self):
         pass
@@ -116,23 +123,40 @@ class Experience_Runner:
 
 def process_pair(pair_info, model_id, model_params, image_path, data_df):
     """
-    Process a single pair of images in a separate process
-    
+    Process a single pair of images in a separate process (API models only: every call
+    builds its own model client, which is prohibitively expensive for a local checkpoint)
+
     Args:
         pair_info: Tuple containing (id1, id2)
         model_id: Model ID to use
         model_params: Model parameters
         image_path: Path to images
         data_df: DataFrame containing image and text data
-        
+
     Returns:
         Dictionary with experience result
     """
     # Create a new model instance for this process
     model = MLLMFactory(model_id, model_params)
-    
+    return process_pair_with_model(pair_info, model, image_path, data_df)
+
+
+def process_pair_with_model(pair_info, model, image_path, data_df):
+    """
+    Process a single pair of images with an already initialised model
+
+    Args:
+        pair_info: Tuple containing (id1, id2), where id1 is the meme predicted benign
+                   and id2 the meme predicted harmful (see conduct_retrieval.greedy_matching)
+        model: Model instance shared across pairs
+        image_path: Path to images
+        data_df: DataFrame containing image and text data
+
+    Returns:
+        Dictionary with experience result
+    """
     id1, id2 = pair_info
-    
+
     # Get image paths and texts
     img1_path = data_df[data_df['id'] == id1]['img'].values[0]
     img2_path = data_df[data_df['id'] == id2]['img'].values[0]
@@ -145,13 +169,16 @@ def process_pair(pair_info, model_id, model_params, image_path, data_df):
     text1 = data_df[data_df['id'] == id1]['text'].values[0]
     text2 = data_df[data_df['id'] == id2]['text'].values[0]
     
+    # The contrastive pairs are stored as (id1 = benign, id2 = harmful), so Meme1 is the
+    # benign member and Meme2 the harmful one. The prompt must name them in that order,
+    # otherwise the gathered experience explains the contrast with the polarity reversed.
     prompt = f"""
 Meme1 Text: {text1}\nMeme2 Text: {text2}
-Given two memes that are visually or structurally similar but belong to distinct categories: Meme i, which is harmful, and Meme j, which is benign. Please complete the following two steps:
-Step 1: 
+Given two memes that are visually or structurally similar but belong to distinct categories: Meme2, which is harmful, and Meme1, which is benign. Please complete the following two steps:
+Step 1:
 Clearly summarize the content of each meme by carefully analyzing its image and textual element embedded in the image, and considering any implicit or explicit messages it conveys.
-Step 2: 
-Based on the content of two memes, contrast the key differences between them to explain why Meme i is classified as harmful content, while Meme j remains benign.
+Step 2:
+Based on the content of two memes, contrast the key differences between them to explain why Meme2 is classified as harmful content, while Meme1 remains benign.
     """
     
     # Get experience
